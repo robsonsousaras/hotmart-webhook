@@ -6,9 +6,7 @@ import string
 import os
 import json
 from datetime import datetime, timedelta
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import resend
 
 app = Flask(__name__)
 
@@ -18,8 +16,7 @@ cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-GMAIL_USER = os.environ.get("GMAIL_USER")
-GMAIL_PASSWORD = os.environ.get("GMAIL_PASSWORD")
+resend.api_key = os.environ.get("RESEND_API_KEY")
 
 def gerar_senha(tamanho=10):
     caracteres = string.ascii_letters + string.digits
@@ -37,11 +34,6 @@ def identificar_plano(nome_produto):
 def enviar_email(destinatario, nome, email, senha, plano):
     try:
         plano_texto = "Vitalício" if plano == "vitalicio" else "Anual" if plano == "anual" else "Mensal"
-        
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "Seu acesso ao ShopeeZPLPrinter"
-        msg["From"] = f"ShopeeZPLPrinter <{GMAIL_USER}>"
-        msg["To"] = destinatario
 
         html = f"""
         <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #0d0d0d; color: #e8e8e8; padding: 32px; border-radius: 8px;">
@@ -57,11 +49,12 @@ def enviar_email(destinatario, nome, email, senha, plano):
         </div>
         """
 
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(GMAIL_USER, GMAIL_PASSWORD)
-            server.sendmail(GMAIL_USER, destinatario, msg.as_string())
+        resend.Emails.send({
+            "from": "ShopeeZPLPrinter <onboarding@resend.dev>",
+            "to": destinatario,
+            "subject": "Seu acesso ao ShopeeZPLPrinter",
+            "html": html
+        })
 
         return True
     except Exception as e:
