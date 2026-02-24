@@ -5,10 +5,10 @@ import random
 import string
 import os
 import json
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
-# Inicializa Firebase
 cred_json = os.environ.get("FIREBASE_CREDENTIALS")
 cred_dict = json.loads(cred_json)
 cred = credentials.Certificate(cred_dict)
@@ -22,30 +22,46 @@ def gerar_senha(tamanho=10):
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
-    
+
     try:
         evento = data['event']
         comprador = data['data']['buyer']
         email = comprador['email']
         nome = comprador['name']
         produto = data['data']['product']['name']
-        
+
         if evento == 'PURCHASE_APPROVED':
             senha = gerar_senha()
-            usuario = auth.create_user(email=email, password=senha)
-            
-            db.collection('licencas').document(usuario.uid).set({
-                'nome': nome,
+
+            try:
+                usuario = auth.get_user_by_email(email)
+            except:
+                usuario = auth.create_user(email=email, password=senha)
+
+            expiracao = datetime.utcnow() + timedelta(days=365)
+
+            db.collection('licenses').document(usuario.uid).set({
                 'email': email,
+                'nome': nome,
                 'produto': produto,
-                'status': 'ativo',
-                'uid': usuario.uid
+                'plano': 'anual',
+                'ativo': True,
+                'deviceId': '',
+                'expiracao': expiracao
             })
-            
+
             return jsonify({'status': 'sucesso', 'mensagem': f'Usuário {email} criado'}), 200
-        
+
+        if evento == 'PURCHASE_CANCELLED' or evento == 'PURCHASE_REFUNDED':
+            try:
+                usuario = auth.get_user_by_email(email)
+                db.collection('licenses').document(usuario.uid).update({'ativo': False})
+            except:
+                pass
+            return jsonify({'status': 'licenca desativada'}), 200
+
         return jsonify({'status': 'ignorado'}), 200
-    
+
     except Exception as e:
         return jsonify({'erro': str(e)}), 500
 
