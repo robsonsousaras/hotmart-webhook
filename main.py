@@ -51,7 +51,7 @@ def enviar_email(destinatario, nome, email, senha, plano):
 
         payload = json.dumps({
             "personalizations": [{"to": [{"email": destinatario}]}],
-            "from": {"email": "noreply@shopeezplprinter.com", "name": "ShopeeZPLPrinter"},
+            "from": {"email": "shopeezplprinter@gmail.com", "name": "ShopeeZPLPrinter"},
             "subject": "Seu acesso ao ShopeeZPLPrinter",
             "content": [{"type": "text/html", "value": html}]
         }).encode("utf-8")
