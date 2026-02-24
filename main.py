@@ -6,6 +6,9 @@ import string
 import os
 import json
 from datetime import datetime, timedelta
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
 
@@ -15,6 +18,9 @@ cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
+GMAIL_USER = os.environ.get("GMAIL_USER")
+GMAIL_PASSWORD = os.environ.get("GMAIL_PASSWORD")
+
 def gerar_senha(tamanho=10):
     caracteres = string.ascii_letters + string.digits
     return ''.join(random.choice(caracteres) for _ in range(tamanho))
@@ -22,11 +28,45 @@ def gerar_senha(tamanho=10):
 def identificar_plano(nome_produto):
     nome = nome_produto.lower()
     if 'vitalicio' in nome or 'vitalício' in nome or 'lifetime' in nome:
-        return 'vitalicio', None
+        return 'vitalicio', datetime.utcnow() + timedelta(days=36500)
     elif 'anual' in nome or 'annual' in nome or '12 mes' in nome:
         return 'anual', datetime.utcnow() + timedelta(days=365)
     else:
         return 'mensal', datetime.utcnow() + timedelta(days=30)
+
+def enviar_email(destinatario, nome, email, senha, plano):
+    try:
+        plano_texto = "Vitalício" if plano == "vitalicio" else "Anual" if plano == "anual" else "Mensal"
+        
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "Seu acesso ao ShopeeZPLPrinter"
+        msg["From"] = f"ShopeeZPLPrinter <{GMAIL_USER}>"
+        msg["To"] = destinatario
+
+        html = f"""
+        <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #0d0d0d; color: #e8e8e8; padding: 32px; border-radius: 8px;">
+            <h2 style="color: #ff6b1a;">🖨 ShopeeZPLPrinter</h2>
+            <p>Olá, <strong>{nome}</strong>! Seu acesso foi liberado.</p>
+            <div style="background: #1a1a1a; padding: 16px; border-radius: 6px; margin: 24px 0;">
+                <p style="margin: 4px 0;"><strong>Plano:</strong> {plano_texto}</p>
+                <p style="margin: 4px 0;"><strong>E-mail:</strong> {email}</p>
+                <p style="margin: 4px 0;"><strong>Senha:</strong> <span style="color: #ff6b1a; font-size: 18px;">{senha}</span></p>
+            </div>
+            <p>Baixe o programa, abra e faça login com essas credenciais.</p>
+            <p style="color: #666; font-size: 12px;">Guarde sua senha em um local seguro.</p>
+        </div>
+        """
+
+        msg.attach(MIMEText(html, "html"))
+
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_USER, GMAIL_PASSWORD)
+            server.sendmail(GMAIL_USER, destinatario, msg.as_string())
+
+        return True
+    except Exception as e:
+        print(f"Erro ao enviar email: {e}")
+        return False
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -43,11 +83,9 @@ def webhook():
             senha = gerar_senha()
             plano, expiracao = identificar_plano(produto)
 
-            if expiracao is None:
-                expiracao = datetime.utcnow() + timedelta(days=36500)  # 100 anos = vitalício
-
             try:
                 usuario = auth.get_user_by_email(email)
+                auth.update_user(usuario.uid, password=senha)
             except:
                 usuario = auth.create_user(email=email, password=senha)
 
@@ -60,6 +98,8 @@ def webhook():
                 'deviceId': '',
                 'expiracao': expiracao
             })
+
+            enviar_email(email, nome, email, senha, plano)
 
             return jsonify({'status': 'sucesso', 'plano': plano, 'email': email}), 200
 
