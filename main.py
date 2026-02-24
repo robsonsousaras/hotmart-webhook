@@ -6,7 +6,7 @@ import string
 import os
 import json
 from datetime import datetime, timedelta
-import resend
+import urllib.request
 
 app = Flask(__name__)
 
@@ -16,7 +16,7 @@ cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-resend.api_key = os.environ.get("RESEND_API_KEY")
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
 
 def gerar_senha(tamanho=10):
     caracteres = string.ascii_letters + string.digits
@@ -49,13 +49,23 @@ def enviar_email(destinatario, nome, email, senha, plano):
         </div>
         """
 
-        resend.Emails.send({
-            "from": "ShopeeZPLPrinter <onboarding@resend.dev>",
-            "to": destinatario,
+        payload = json.dumps({
+            "personalizations": [{"to": [{"email": destinatario}]}],
+            "from": {"email": "noreply@shopeezplprinter.com", "name": "ShopeeZPLPrinter"},
             "subject": "Seu acesso ao ShopeeZPLPrinter",
-            "html": html
-        })
+            "content": [{"type": "text/html", "value": html}]
+        }).encode("utf-8")
 
+        req = urllib.request.Request(
+            "https://api.sendgrid.com/v3/mail/send",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+        urllib.request.urlopen(req)
         return True
     except Exception as e:
         print(f"Erro ao enviar email: {e}")
