@@ -140,8 +140,12 @@ def webhook():
                 expiracao_atual = dados.get('expiracao', datetime.utcnow())
                 if hasattr(expiracao_atual, 'replace'):
                     expiracao_atual = expiracao_atual.replace(tzinfo=None)
-                base = max(expiracao_atual, datetime.utcnow())
-                nova_expiracao = calcular_expiracao(plano, base)
+                ativo_atual = dados.get('ativo', True)
+                if ativo_atual:
+                    base = max(expiracao_atual, datetime.utcnow())
+                else:
+                    base = datetime.utcnow()
+                    nova_expiracao = calcular_expiracao(plano, base)
 
                 # Atualiza sem trocar senha e sem resetar deviceId
                 db.collection('licenses').document(usuario.uid).update({
