@@ -42,7 +42,9 @@ def calcular_expiracao(plano, base=None):
         return base + timedelta(days=30)
 
 def dias_do_plano(plano):
-    if plano == 'anual':
+    if plano == 'vitalicio':
+        return 36500
+    elif plano == 'anual':
         return 365
     return 30
 
