@@ -128,52 +128,59 @@ def webhook():
         produto = data['data']['product']['name']
 
         if evento == 'PURCHASE_APPROVED':
-            plano = identificar_plano(produto)
+    plano = identificar_plano(produto)
+    nova_expiracao = None
 
-            try:
-                # Usuário já existe
-                usuario = auth.get_user_by_email(email)
-                doc = db.collection('licenses').document(usuario.uid).get()
-                dados = doc.to_dict() if doc.exists else {}
+    # Tenta buscar usuário existente
+    usuario_existente = None
+    try:
+        usuario_existente = auth.get_user_by_email(email)
+    except:
+        pass
 
-                # Calcula nova expiração somando dias restantes
-               expiracao_atual = dados.get('expiracao', datetime.utcnow())
-if hasattr(expiracao_atual, 'tzinfo') and expiracao_atual.tzinfo is not None:
-    expiracao_atual = expiracao_atual.replace(tzinfo=None)
-ativo_atual = dados.get('ativo', True)
-if ativo_atual:
-    base = max(expiracao_atual, datetime.utcnow())
-else:
-    base = datetime.utcnow()
-nova_expiracao = calcular_expiracao(plano, base)
+    if usuario_existente:
+        # Usuário já existe — atualiza licença
+        doc = db.collection('licenses').document(usuario_existente.uid).get()
+        dados = doc.to_dict() if doc.exists else {}
 
-                # Atualiza sem trocar senha e sem resetar deviceId
-                db.collection('licenses').document(usuario.uid).update({
-                    'plano': plano,
-                    'ativo': True,
-                    'expiracao': nova_expiracao,
-                    'produto': produto
-                })
+        expiracao_atual = dados.get('expiracao', datetime.utcnow())
+        if hasattr(expiracao_atual, 'tzinfo') and expiracao_atual.tzinfo is not None:
+            expiracao_atual = expiracao_atual.replace(tzinfo=None)
 
-                enviar_email_renovacao(email, nome, plano, nova_expiracao)
+        ativo_atual = dados.get('ativo', True)
+        if ativo_atual:
+            base = max(expiracao_atual, datetime.utcnow())
+        else:
+            base = datetime.utcnow()
 
-            except:
-                # Usuário novo
-                senha = gerar_senha()
-                nova_expiracao = calcular_expiracao(plano)
-                usuario = auth.create_user(email=email, password=senha)
-                db.collection('licenses').document(usuario.uid).set({
-                    'email': email,
-                    'nome': nome,
-                    'produto': produto,
-                    'plano': plano,
-                    'ativo': True,
-                    'deviceId': '',
-                    'expiracao': nova_expiracao
-                })
-                enviar_email(email, nome, email, senha, plano)
+        nova_expiracao = calcular_expiracao(plano, base)
 
-            return jsonify({'status': 'sucesso', 'plano': plano, 'email': email}), 200
+        db.collection('licenses').document(usuario_existente.uid).update({
+            'plano': plano,
+            'ativo': True,
+            'expiracao': nova_expiracao,
+            'produto': produto
+        })
+
+        enviar_email_renovacao(email, nome, plano, nova_expiracao)
+
+    else:
+        # Usuário novo
+        senha = gerar_senha()
+        nova_expiracao = calcular_expiracao(plano)
+        usuario_novo = auth.create_user(email=email, password=senha)
+        db.collection('licenses').document(usuario_novo.uid).set({
+            'email': email,
+            'nome': nome,
+            'produto': produto,
+            'plano': plano,
+            'ativo': True,
+            'deviceId': '',
+            'expiracao': nova_expiracao
+        })
+        enviar_email(email, nome, email, senha, plano)
+
+    return jsonify({'status': 'sucesso', 'plano': plano, 'email': email}), 200
 
         if evento in ['PURCHASE_CANCELLED', 'PURCHASE_REFUNDED']:
             try:
