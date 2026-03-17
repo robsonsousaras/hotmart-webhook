@@ -125,7 +125,7 @@ def webhook():
         produto = data['data']['product']['name']
 
         if evento == 'PURCHASE_APPROVED':
-            plano = identificar_plano(produto)
+            plano = dados.get('plano', identificar_plano(produto))
 
             usuario_existente = None
             try:
