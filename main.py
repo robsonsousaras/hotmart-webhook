@@ -127,7 +127,7 @@ def webhook():
         produto = data['data']['product']['name']
 
         if evento == 'PURCHASE_APPROVED':
-            plano = dados.get('plano', identificar_plano(produto))
+            plano = identificar_plano(produto)
 
             usuario_existente = None
             try:
@@ -138,6 +138,7 @@ def webhook():
             if usuario_existente:
                 doc = db.collection('licenses').document(usuario_existente.uid).get()
                 dados = doc.to_dict() if doc.exists else {}
+                plano = identificar_plano(produto)
 
                 expiracao_atual = dados.get('expiracao', datetime.utcnow())
                 if hasattr(expiracao_atual, 'tzinfo') and expiracao_atual.tzinfo is not None:
@@ -182,24 +183,21 @@ def webhook():
                 usuario = auth.get_user_by_email(email)
                 doc = db.collection('licenses').document(usuario.uid).get()
                 dados = doc.to_dict() if doc.exists else {}
-                plano = identificar_plano(produto)
+                plano = dados.get('plano', identificar_plano(produto))
 
                 expiracao_atual = dados.get('expiracao', datetime.utcnow())
                 if hasattr(expiracao_atual, 'tzinfo') and expiracao_atual.tzinfo is not None:
                     expiracao_atual = expiracao_atual.replace(tzinfo=None)
 
-                # Subtrai os dias do plano cancelado
                 expiracao_revertida = expiracao_atual - timedelta(days=dias_do_plano(plano))
                 agora = datetime.utcnow()
 
                 if expiracao_revertida > agora:
-                    # Ainda tem dias de período anterior — mantém ativo com data revertida
                     db.collection('licenses').document(usuario.uid).update({
                         'expiracao': expiracao_revertida,
                         'ativo': True
                     })
                 else:
-                    # Sem dias restantes — bloqueia
                     db.collection('licenses').document(usuario.uid).update({'ativo': False})
             except:
                 pass
