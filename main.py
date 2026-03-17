@@ -41,6 +41,11 @@ def calcular_expiracao(plano, base=None):
     else:
         return base + timedelta(days=30)
 
+def dias_do_plano(plano):
+    if plano == 'anual':
+        return 365
+    return 30
+
 def enviar_email(destinatario, nome, email, senha, plano):
     try:
         plano_texto = "Vitalício" if plano == "vitalicio" else "Anual" if plano == "anual" else "Mensal"
@@ -173,7 +178,27 @@ def webhook():
         if evento in ['PURCHASE_CANCELLED', 'PURCHASE_REFUNDED']:
             try:
                 usuario = auth.get_user_by_email(email)
-                db.collection('licenses').document(usuario.uid).update({'ativo': False})
+                doc = db.collection('licenses').document(usuario.uid).get()
+                dados = doc.to_dict() if doc.exists else {}
+                plano = identificar_plano(produto)
+
+                expiracao_atual = dados.get('expiracao', datetime.utcnow())
+                if hasattr(expiracao_atual, 'tzinfo') and expiracao_atual.tzinfo is not None:
+                    expiracao_atual = expiracao_atual.replace(tzinfo=None)
+
+                # Subtrai os dias do plano cancelado
+                expiracao_revertida = expiracao_atual - timedelta(days=dias_do_plano(plano))
+                agora = datetime.utcnow()
+
+                if expiracao_revertida > agora:
+                    # Ainda tem dias de período anterior — mantém ativo com data revertida
+                    db.collection('licenses').document(usuario.uid).update({
+                        'expiracao': expiracao_revertida,
+                        'ativo': True
+                    })
+                else:
+                    # Sem dias restantes — bloqueia
+                    db.collection('licenses').document(usuario.uid).update({'ativo': False})
             except:
                 pass
             return jsonify({'status': 'licenca desativada'}), 200
