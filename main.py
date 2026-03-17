@@ -63,14 +63,10 @@ def enviar_email(destinatario, nome, email, senha, plano):
             "subject": "Seu acesso ao ShopeeZPLPrinter",
             "htmlContent": html
         }).encode("utf-8")
-
         req = urllib.request.Request(
             "https://api.brevo.com/v3/smtp/email",
             data=payload,
-            headers={
-                "api-key": BREVO_API_KEY,
-                "Content-Type": "application/json"
-            },
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
             method="POST"
         )
         urllib.request.urlopen(req)
@@ -100,14 +96,10 @@ def enviar_email_renovacao(destinatario, nome, plano, nova_expiracao):
             "subject": "Sua licença foi renovada - ShopeeZPLPrinter",
             "htmlContent": html
         }).encode("utf-8")
-
         req = urllib.request.Request(
             "https://api.brevo.com/v3/smtp/email",
             data=payload,
-            headers={
-                "api-key": BREVO_API_KEY,
-                "Content-Type": "application/json"
-            },
+            headers={"api-key": BREVO_API_KEY, "Content-Type": "application/json"},
             method="POST"
         )
         urllib.request.urlopen(req)
@@ -128,59 +120,55 @@ def webhook():
         produto = data['data']['product']['name']
 
         if evento == 'PURCHASE_APPROVED':
-    plano = identificar_plano(produto)
-    nova_expiracao = None
+            plano = identificar_plano(produto)
 
-    # Tenta buscar usuário existente
-    usuario_existente = None
-    try:
-        usuario_existente = auth.get_user_by_email(email)
-    except:
-        pass
+            usuario_existente = None
+            try:
+                usuario_existente = auth.get_user_by_email(email)
+            except:
+                pass
 
-    if usuario_existente:
-        # Usuário já existe — atualiza licença
-        doc = db.collection('licenses').document(usuario_existente.uid).get()
-        dados = doc.to_dict() if doc.exists else {}
+            if usuario_existente:
+                doc = db.collection('licenses').document(usuario_existente.uid).get()
+                dados = doc.to_dict() if doc.exists else {}
 
-        expiracao_atual = dados.get('expiracao', datetime.utcnow())
-        if hasattr(expiracao_atual, 'tzinfo') and expiracao_atual.tzinfo is not None:
-            expiracao_atual = expiracao_atual.replace(tzinfo=None)
+                expiracao_atual = dados.get('expiracao', datetime.utcnow())
+                if hasattr(expiracao_atual, 'tzinfo') and expiracao_atual.tzinfo is not None:
+                    expiracao_atual = expiracao_atual.replace(tzinfo=None)
 
-        ativo_atual = dados.get('ativo', True)
-        if ativo_atual:
-            base = max(expiracao_atual, datetime.utcnow())
-        else:
-            base = datetime.utcnow()
+                ativo_atual = dados.get('ativo', True)
+                if ativo_atual:
+                    base = max(expiracao_atual, datetime.utcnow())
+                else:
+                    base = datetime.utcnow()
 
-        nova_expiracao = calcular_expiracao(plano, base)
+                nova_expiracao = calcular_expiracao(plano, base)
 
-        db.collection('licenses').document(usuario_existente.uid).update({
-            'plano': plano,
-            'ativo': True,
-            'expiracao': nova_expiracao,
-            'produto': produto
-        })
+                db.collection('licenses').document(usuario_existente.uid).update({
+                    'plano': plano,
+                    'ativo': True,
+                    'expiracao': nova_expiracao,
+                    'produto': produto
+                })
 
-        enviar_email_renovacao(email, nome, plano, nova_expiracao)
+                enviar_email_renovacao(email, nome, plano, nova_expiracao)
 
-    else:
-        # Usuário novo
-        senha = gerar_senha()
-        nova_expiracao = calcular_expiracao(plano)
-        usuario_novo = auth.create_user(email=email, password=senha)
-        db.collection('licenses').document(usuario_novo.uid).set({
-            'email': email,
-            'nome': nome,
-            'produto': produto,
-            'plano': plano,
-            'ativo': True,
-            'deviceId': '',
-            'expiracao': nova_expiracao
-        })
-        enviar_email(email, nome, email, senha, plano)
+            else:
+                senha = gerar_senha()
+                nova_expiracao = calcular_expiracao(plano)
+                usuario_novo = auth.create_user(email=email, password=senha)
+                db.collection('licenses').document(usuario_novo.uid).set({
+                    'email': email,
+                    'nome': nome,
+                    'produto': produto,
+                    'plano': plano,
+                    'ativo': True,
+                    'deviceId': '',
+                    'expiracao': nova_expiracao
+                })
+                enviar_email(email, nome, email, senha, plano)
 
-    return jsonify({'status': 'sucesso', 'plano': plano, 'email': email}), 200
+            return jsonify({'status': 'sucesso', 'plano': plano, 'email': email}), 200
 
         if evento in ['PURCHASE_CANCELLED', 'PURCHASE_REFUNDED']:
             try:
