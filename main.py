@@ -16,7 +16,7 @@ cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY")
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
 
 def gerar_senha(tamanho=10):
     caracteres = string.ascii_letters + string.digits
@@ -34,7 +34,6 @@ def identificar_plano(nome_produto):
 def enviar_email(destinatario, nome, email, senha, plano):
     try:
         plano_texto = "Vitalício" if plano == "vitalicio" else "Anual" if plano == "anual" else "Mensal"
-
         html = f"""
         <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #0d0d0d; color: #e8e8e8; padding: 32px; border-radius: 8px;">
             <h2 style="color: #ff6b1a;">🖨 ShopeeZPLPrinter</h2>
@@ -48,19 +47,18 @@ def enviar_email(destinatario, nome, email, senha, plano):
             <p style="color: #666; font-size: 12px;">Guarde sua senha em um local seguro.</p>
         </div>
         """
-
         payload = json.dumps({
-            "personalizations": [{"to": [{"email": destinatario}]}],
-            "from": {"email": "shopeezplprinter@gmail.com", "name": "ShopeeZPLPrinter"},
+            "sender": {"name": "ShopeeZPLPrinter", "email": "shopeezplprinter@gmail.com"},
+            "to": [{"email": destinatario, "name": nome}],
             "subject": "Seu acesso ao ShopeeZPLPrinter",
-            "content": [{"type": "text/html", "value": html}]
+            "htmlContent": html
         }).encode("utf-8")
 
         req = urllib.request.Request(
-            "https://api.sendgrid.com/v3/mail/send",
+            "https://api.brevo.com/v3/smtp/email",
             data=payload,
             headers={
-                "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                "api-key": BREVO_API_KEY,
                 "Content-Type": "application/json"
             },
             method="POST"
@@ -85,13 +83,11 @@ def webhook():
         if evento == 'PURCHASE_APPROVED':
             senha = gerar_senha()
             plano, expiracao = identificar_plano(produto)
-
             try:
                 usuario = auth.get_user_by_email(email)
                 auth.update_user(usuario.uid, password=senha)
             except:
                 usuario = auth.create_user(email=email, password=senha)
-
             db.collection('licenses').document(usuario.uid).set({
                 'email': email,
                 'nome': nome,
@@ -101,9 +97,7 @@ def webhook():
                 'deviceId': '',
                 'expiracao': expiracao
             })
-
             enviar_email(email, nome, email, senha, plano)
-
             return jsonify({'status': 'sucesso', 'plano': plano, 'email': email}), 200
 
         if evento in ['PURCHASE_CANCELLED', 'PURCHASE_REFUNDED']:
